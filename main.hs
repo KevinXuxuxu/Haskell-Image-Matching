@@ -51,27 +51,26 @@ checkaround img (x,y) i
     | otherwise = checkaround img (x,y) (i+1)
     where arounds = [(2,0), (2,2), (0,2), (-2,2), (-2,0), (-2,-2), (0,-2), (2,-2)]; (x',y') = arounds!!i; (Image _ w h) = img
 
-match :: Image -> Image -> (Int, Int) -> Int -> Int -> (Int, Int)
-match img1 img2 (x,y) i up = let
-    fclose = close;
+match :: Int -> Image -> Image -> (Int, Int) -> Int -> Int -> (Int, Int)
+match mode img1 img2 (x,y) i up = let
+    fclose = if mode == 3 then close_noise else close;
     (Image _ w h) = img2;
     anchors = [(0,0), (w-1,0), (0,h-1), (w-1,h-1), (div w 2, div h 2), (div w 4, div h 4), (3*(div w 4), 3*(div h 4)), (div w 4, 3*(div h 4)), (3*(div w 4), div h 4)];
     (x',y') = anchors!!i;
     (p1, p2) = (getPix img1 (x+x', y+y'), getPix img2 (x',y'));
     flag = checkaround img2 (x',y') 0
     val = fclose p1 p2
-    (v, n) = match img1 img2 (x,y) (i+1) up
-    in if flag then (v,n) else (if val > up then (100000,1) else (if (i+1) < Prelude.length anchors then (val+v, n+1) else (val, 1)))
+    (v, n) = match mode img1 img2 (x,y) (i+1) up
+    in if (mode == 4 && flag) then (v,n) else (if val > up then (100000,1) else (if (i+1) < Prelude.length anchors then (val+v, n+1) else (val, 1)))
 
 updateCoo :: (Int,(Int,Int)) -> (Int,(Int,Int)) -> (Int,(Int,Int))
 updateCoo (m,(x,y)) (m',(x',y')) = if m' < m then (m',(x',y')) else (m,(x,y))
 
-findPlace :: Image -> Image -> (Int, Int) -> (Int,(Int,Int)) -> IO(Int, Int)
-findPlace img1 img2 (x,y) (m,(x',y')) = do
-    print ((x,y),m)
-    let (rst, n) = match img1 img2 (x,y) 0 m
-    let updated = updateCoo (m,(x',y')) (div (rst*10) n,(x,y))
-    let ans = (if rst < d then (x,y) else (if x < (w-w2-1) then unsafePerformIO (findPlace img1 img2 (x+1, y) updated) else (if y < (h-h2-1) then unsafePerformIO (findPlace img1 img2 (0, y+1) updated) else (x',y') ) )) where (Image _ w h) = img1; (Image _ w2 h2) = img2; d = 1
+findPlace :: Int -> Image -> Image -> (Int, Int) -> (Int,(Int,Int)) -> IO(Int, Int)
+findPlace mode img1 img2 (x,y) (m,(x',y')) = do
+    let (rst, n) = match mode img1 img2 (x,y) 0 m
+    let updated = updateCoo (m,(x',y')) (if mode == 4 then (div (rst*10) n,(x,y)) else (rst, (x,y)))
+    let ans = (if rst < d then (x,y) else (if x < (w-w2-1) then unsafePerformIO (findPlace mode img1 img2 (x+1, y) updated) else (if y < (h-h2-1) then unsafePerformIO (findPlace mode img1 img2 (0, y+1) updated) else (x',y') ) )) where (Image _ w h) = img1; (Image _ w2 h2) = img2; d = 1
     return ans
 
 hehe :: Image -> Int -> Int -> Int -> Int -> Int -> Int -> [Int]
@@ -83,14 +82,13 @@ hehe img w h x y sx sy
 main :: IO()
 main = do
     let args = unsafePerformIO getArgs
-    let img = "img5"
-    let (rgba1, (width1, height1)) = unsafePerformIO (readin ("/Users/Kevin/Desktop/xingqu/benchmark/"++img++"/"++img++".bmp"))
+    let (rgba1, (width1, height1)) = unsafePerformIO (readin (args!!0))
     let p1 = fromList (Prelude.map wti (unpack rgba1))
-    let (rgba2, (width2, height2)) = unsafePerformIO (readin ("/Users/Kevin/Desktop/xingqu/benchmark/"++img++"/"++img++"_partial_taint.bmp"))
+    let (rgba2, (width2, height2)) = unsafePerformIO (readin (args!!1))
     let p2 = fromList (Prelude.map wti (unpack rgba2))
     let img1 = Image p1 width1 height1
     let img2 = Image p2 width2 height2
-    let (xx,yy) = unsafePerformIO (findPlace img1 img2 (0,000) (10000, (0,0)))
+    let (xx,yy) = unsafePerformIO (findPlace (read (args!!2)::Int) img1 img2 (0,000) (10000, (0,0)))
     print (xx,yy)
     let rgba = Data.ByteString.pack (Prelude.map itw (hehe img1 width2 height2 0 0 xx yy))
     let bmp = packRGBA32ToBMP width2 height2 rgba
